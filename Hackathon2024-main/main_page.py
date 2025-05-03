@@ -14,19 +14,6 @@ def custom_warning(message):
         </p>
     ''', unsafe_allow_html=True)
 
-
-background_image = """
-<style>
-[data-testid="stAppViewContainer"] {
-    background-image: url("https://media.istockphoto.com/id/1181555776/vector/pipe-background_2.jpg?s=612x612&w=0&k=20&c=4sBhQ2AaE2gbXgE7C76GyV5MiGAr_tn88gigezSZds4=");
-    background-size: 100vw 120vh;  
-    background-position: center;  
-    background-repeat: no-repeat;
-}
-</style>
-"""
-st.markdown(background_image, unsafe_allow_html= True)
-
 st.markdown("<h1 style='text-align: center; color: Black; margin-top: 100px; font-family:Arial, Times, serif;'>EOG HYDRATE ALERT</h1>", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Choose a file")
