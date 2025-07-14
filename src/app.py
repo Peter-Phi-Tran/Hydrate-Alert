@@ -1,12 +1,13 @@
 import streamlit as st
-import pandas as pd
 from streamlit_option_menu import option_menu
 
 import pages.data_upload as data_upload
 import pages.data_analysis as data_analysis
 import pages.help as help
 import pages.home as home
-import pages.landing as landing
+import pages.landing as landing_page
+
+st.set_page_config(initial_sidebar_state="collapsed")
 
 # Initialize session state for login
 if 'logged_in' not in st.session_state:
@@ -100,4 +101,4 @@ if st.session_state.logged_in:
         help.help_page()
 
 else:
-    landing.landing_page()
+    landing_page.landing_page()
