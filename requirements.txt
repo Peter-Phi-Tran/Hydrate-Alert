@@ -4,3 +4,8 @@ numpy
 pandas
 scikit-learn
 streamlit-option-menu
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+streamlit-google-auth
+requests

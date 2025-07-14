@@ -6,8 +6,8 @@ def landing_page():
     style.style()
     
     # Main header with enhanced styling
-    st.markdown("<h1 class='main-header'>Hydrate Alert</h1>", unsafe_allow_html=True)
-    
+    st.markdown("<h1 class='main-header' style='margin-top: -50px;'>Hydrate Alert</h1>", unsafe_allow_html=True)
+
     # Welcome message and description
     st.markdown("""
     <div class='welcome-section'>
