@@ -1,6 +1,9 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import urllib.parse
+import hashlib
+import time
+import json
 
 import pages.data_upload as data_upload
 import pages.data_analysis as data_analysis
@@ -19,6 +22,95 @@ except ImportError:
 
 st.set_page_config(initial_sidebar_state="collapsed")
 
+# Persistent authentication functions
+def create_auth_token(username, email):
+    """Create a persistent authentication token"""
+    timestamp = str(int(time.time()))
+    token_data = f"{username}:{email}:{timestamp}"
+    token_hash = hashlib.sha256(token_data.encode()).hexdigest()
+    return f"{token_hash}:{timestamp}"
+
+def validate_auth_token(token, username, email):
+    """Validate authentication token"""
+    try:
+        token_hash, timestamp = token.split(':')
+        token_data = f"{username}:{email}:{timestamp}"
+        expected_hash = hashlib.sha256(token_data.encode()).hexdigest()
+        
+        # Check if token is valid and not older than 24 hours
+        if token_hash == expected_hash and (int(time.time()) - int(timestamp)) < 86400:
+            return True
+        return False
+    except:
+        return False
+
+def save_auth_state(username, email, picture=""):
+    """Save authentication state persistently"""
+    auth_token = create_auth_token(username, email)
+    
+    # Store in session state
+    st.session_state.logged_in = True
+    st.session_state.username = username
+    st.session_state.user_email = email
+    st.session_state.user_picture = picture
+    st.session_state.auth_token = auth_token
+    
+    # Store in browser's session storage using JavaScript
+    auth_data = {
+        'username': username,
+        'email': email,
+        'picture': picture,
+        'token': auth_token,
+        'timestamp': int(time.time())
+    }
+    
+    st.html(f"""
+    <script>
+        sessionStorage.setItem('hydrate_auth', JSON.stringify({json.dumps(auth_data)}));
+    </script>
+    """)
+
+def load_auth_state():
+    """Load authentication state from browser storage"""
+    # First check session state
+    if 'logged_in' in st.session_state and st.session_state.logged_in:
+        return True
+    
+    # Try to load from browser storage
+    auth_check = st.html("""
+    <script>
+        const authData = sessionStorage.getItem('hydrate_auth');
+        if (authData) {
+            const parsed = JSON.parse(authData);
+            // Send data back to Streamlit
+            window.parent.postMessage({
+                type: 'hydrate_auth',
+                data: parsed
+            }, '*');
+        }
+    </script>
+    """)
+    
+    return False
+
+def clear_auth_state():
+    """Clear authentication state"""
+    # Clear session state
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.session_state.user_email = ""
+    st.session_state.user_picture = ""
+    if 'auth_token' in st.session_state:
+        del st.session_state.auth_token
+    
+    # Clear browser storage
+    st.html("""
+    <script>
+        sessionStorage.removeItem('hydrate_auth');
+        localStorage.removeItem('hydrate_auth');
+    </script>
+    """)
+
 # Initialize session state for login
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -30,6 +122,83 @@ if 'user_picture' not in st.session_state:
     st.session_state.user_picture = ""
 if 'sidebar_open' not in st.session_state:
     st.session_state.sidebar_open = False
+
+# Check for persistent authentication on page load
+if not st.session_state.logged_in:
+    # Add JavaScript to check for stored auth and restore session
+    st.html("""
+    <script>
+        const authData = sessionStorage.getItem('hydrate_auth');
+        if (authData) {
+            try {
+                const parsed = JSON.parse(authData);
+                // Check if auth is recent (within 24 hours)
+                const now = Math.floor(Date.now() / 1000);
+                if (now - parsed.timestamp < 86400) {
+                    // Create hidden form to restore session
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.style.display = 'none';
+                    
+                    const usernameInput = document.createElement('input');
+                    usernameInput.name = 'restore_username';
+                    usernameInput.value = parsed.username;
+                    form.appendChild(usernameInput);
+                    
+                    const emailInput = document.createElement('input');
+                    emailInput.name = 'restore_email';
+                    emailInput.value = parsed.email;
+                    form.appendChild(emailInput);
+                    
+                    const pictureInput = document.createElement('input');
+                    pictureInput.name = 'restore_picture';
+                    pictureInput.value = parsed.picture;
+                    form.appendChild(pictureInput);
+                    
+                    const tokenInput = document.createElement('input');
+                    tokenInput.name = 'restore_token';
+                    tokenInput.value = parsed.token;
+                    form.appendChild(tokenInput);
+                    
+                    document.body.appendChild(form);
+                    
+                    // Set a flag to trigger rerun
+                    const event = new CustomEvent('streamlit:setComponentValue', {
+                        detail: {
+                            value: 'restore_auth'
+                        }
+                    });
+                    window.dispatchEvent(event);
+                }
+            } catch (e) {
+                console.error('Error restoring auth:', e);
+                sessionStorage.removeItem('hydrate_auth');
+            }
+        }
+    </script>
+    """)
+
+# Handle authentication restoration from browser storage
+if 'restore_username' in st.query_params:
+    username = st.query_params.get('restore_username')
+    email = st.query_params.get('restore_email')
+    picture = st.query_params.get('restore_picture', '')
+    token = st.query_params.get('restore_token')
+    
+    if username and email and token:
+        if validate_auth_token(token, username, email):
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.session_state.user_email = email
+            st.session_state.user_picture = picture
+            st.session_state.auth_token = token
+            
+            # Clear query params
+            st.query_params.clear()
+            st.rerun()
+        else:
+            # Invalid token, clear storage
+            clear_auth_state()
 
 # Handle Google OAuth callback
 if GOOGLE_AUTH_AVAILABLE:
@@ -44,10 +213,8 @@ if GOOGLE_AUTH_AVAILABLE:
             user_info = google_auth.authenticate_user(auth_code)
             
             if user_info:
-                st.session_state.logged_in = True
-                st.session_state.username = user_info['name']
-                st.session_state.user_email = user_info['email']
-                st.session_state.user_picture = user_info.get('picture', '')
+                # Use persistent authentication
+                save_auth_state(user_info['name'], user_info['email'], user_info.get('picture', ''))
                 st.success(f"Welcome, {user_info['name']}!")
                 
                 # Clear query params and oauth_processed flag
@@ -89,9 +256,8 @@ with st.sidebar:
                 # Simple authentication (you can replace this with your own logic)
                 if username and password:
                     if username == "admin" and password == "password":  # Replace with real authentication
-                        st.session_state.logged_in = True
-                        st.session_state.username = username
-                        st.session_state.user_email = f"{username}@local.dev"
+                        # Use persistent authentication
+                        save_auth_state(username, f"{username}@local.dev")
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
@@ -151,10 +317,7 @@ with st.sidebar:
         
         # Logout button
         if st.button("Logout", use_container_width=True):
-            st.session_state.logged_in = False
-            st.session_state.username = ""
-            st.session_state.user_email = ""
-            st.session_state.user_picture = ""
+            clear_auth_state()
             st.rerun()
 
 # Only show main content if user is logged in
